@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Push 管理后台</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }
+        h1 { border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; }
+        textarea { height: 100px; resize: vertical; }
+        button { background-color: #007bff; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+        button:hover { background-color: #0056b3; }
+        #status { margin-top: 20px; padding: 15px; border-radius: 4px; display: none; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    </style>
+</head>
+<body>
+    <h1>🛰️ Web Push 广播控制台</h1>
+    
+    <div class="form-group">
+        <label for="title">标题 (Title):</label>
+        <input type="text" id="title" value="来自管理员的消息" placeholder="请输入通知标题">
+    </div>
+
+    <div class="form-group">
+        <label for="body">内容 (Body):</label>
+        <textarea id="body" placeholder="请输入通知内容...">这是通过管理后台发送的全员广播 notification。</textarea>
+    </div>
+
+    <button onclick="sendBroadcast()" id="sendBtn">📢 发送全员广播</button>
+
+    <div id="status"></div>
+
+    <script>
+        async function sendBroadcast() {
+            const title = document.getElementById('title').value;
+            const body = document.getElementById('body').value;
+            const btn = document.getElementById('sendBtn');
+            const statusDiv = document.getElementById('status');
+
+            if (!title || !body) {
+                alert("标题和内容不能为空！");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = "发送中...";
+            statusDiv.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/broadcast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, body })
+                });
+                
+                const data = await response.json();
+                
+                statusDiv.className = 'success';
+                statusDiv.innerHTML = `
+                    <strong>发送完成！</strong><br>
+                    成功: ${data.results.success} <br>
+                    失败: ${data.results.failed} <br>
+                    失效: ${data.results.removed} (已自动移除)
+                `;
+                statusDiv.style.display = 'block';
+
+            } catch (e) {
+                statusDiv.className = 'error';
+                statusDiv.innerText = "发送请求失败: " + e;
+                statusDiv.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "📢 发送全员广播";
+            }
+        }
+    </script>
+</body>
+</html>

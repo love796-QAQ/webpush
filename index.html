@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#ffffff" />
+  <link rel="manifest" href="/manifest.json" />
+  <title>Web Push 示例</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      text-align: center;
+      padding: 30px;
+    }
+
+    textarea {
+      width: 100%;
+      max-width: 600px;
+      height: 200px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>🧪 Web Push 测试</h1>
+
+  <button id="subscribeBtn">注册通知</button>
+
+  <h3>📬 订阅状态：</h3>
+  <div id="statusMsg" style="font-size: 1.2em; margin-bottom: 20px;">检测中...</div>
+
+  <script>
+    let vapidPublicKeyPromise = null;
+
+    async function fetchPublicKey() {
+      if (!vapidPublicKeyPromise) {
+        vapidPublicKeyPromise = fetch('/vapid-public-key')
+          .then(res => {
+            if (!res.ok) throw new Error('Failed to fetch VAPID public key');
+            return res.json();
+          })
+          .then(data => data.publicKey);
+      }
+      return vapidPublicKeyPromise;
+    }
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding)
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+      const rawData = atob(base64);
+      return new Uint8Array([...rawData].map(char => char.charCodeAt(0)));
+    }
+
+    async function registerPush() {
+      try {
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        const publicKey = await fetchPublicKey();
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey)
+        });
+        console.log("✅ 注册成功，订阅对象为：", sub);
+
+        // 上报订阅信息到后台
+        await reportSubscription(sub);
+
+        updateUI(true);
+      } catch (e) {
+        alert("❌ 注册失败：" + e);
+        console.error(e);
+      }
+    }
+
+    async function reportSubscription(sub) {
+      try {
+        const response = await fetch('/api/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sub)
+        });
+        const data = await response.json();
+        console.log("上报结果:", data);
+      } catch (e) {
+        console.error("上报订阅失败", e);
+      }
+    }
+
+    async function updateUI(isSubscribed) {
+      const statusDiv = document.getElementById('statusMsg');
+      const btn = document.getElementById('subscribeBtn');
+
+      if (isSubscribed) {
+        statusDiv.innerText = "✅ 已成功订阅！请等待管理员推送。";
+        statusDiv.style.color = "green";
+        btn.style.display = 'none';
+      } else {
+        statusDiv.innerText = "尚未订阅，请点击按钮开启通知。";
+        statusDiv.style.color = "#666";
+        btn.style.display = 'inline-block';
+      }
+    }
+
+    async function checkSubscription() {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          // 每次打开页面都重新上报一次，确保后端有数据（防止后端重启数据丢失）
+          reportSubscription(sub);
+          updateUI(true);
+        } else {
+          updateUI(false);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    document.getElementById('subscribeBtn').onclick = registerPush;
+    checkSubscription();
+  </script>
+</body>
+
+</html>

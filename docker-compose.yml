@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  webpush:
+    build: .
+    container_name: webpush-server
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist keys/subscriptions in a single data directory
+      - ./data:/app/data
+    restart: unless-stopped
