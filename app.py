@@ -5,6 +5,7 @@ from typing import List, Optional
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from urllib.parse import urlparse
 from pydantic import BaseModel
 from pywebpush import webpush, WebPushException
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -111,6 +112,12 @@ class BroadcastPayload(BaseModel):
     title: str
     body: str
 
+class SubscriptionDeleteRequest(BaseModel):
+    endpoint: str
+
+class SubscriptionCheckRequest(BaseModel):
+    endpoint: str
+
 # --- Storage ---
 def load_subscriptions() -> List[dict]:
     if not os.path.exists(SUBSCRIPTIONS_FILE):
@@ -148,6 +155,25 @@ def subscribe(sub: SubscriptionInfo):
     logger.info(f"New subscriber: {sub.endpoint[:20]}...")
     return {"status": "success", "message": "Subscription saved"}
 
+@app.get("/api/subscriptions")
+def list_subscriptions():
+    """List all stored subscriptions for manual management."""
+    return {"subscriptions": load_subscriptions()}
+
+@app.delete("/api/subscriptions")
+def delete_subscription(payload: SubscriptionDeleteRequest):
+    """Manually remove a subscription by endpoint."""
+    remove_subscription(payload.endpoint)
+    logger.info(f"Manually removed subscription: {payload.endpoint[:32]}...")
+    return {"status": "success", "removed": payload.endpoint}
+
+@app.post("/api/subscriptions/check")
+def check_subscription(payload: SubscriptionCheckRequest):
+    """Check if a subscription is stored on the server."""
+    subs = load_subscriptions()
+    exists = any(s.get("endpoint") == payload.endpoint for s in subs)
+    return {"exists": exists}
+
 @app.post("/api/broadcast")
 def broadcast(payload: BroadcastPayload):
     """Send push notification to all subscribers."""
@@ -162,12 +188,19 @@ def broadcast(payload: BroadcastPayload):
     
     for sub in subs:
         try:
+            endpoint = sub.get("endpoint", "")
+            parsed = urlparse(endpoint)
+            if not (parsed.scheme and parsed.netloc):
+                raise ValueError(f"Invalid subscription endpoint: {endpoint}")
+            audience = f"{parsed.scheme}://{parsed.netloc}"
+
             webpush(
                 subscription_info=sub,
                 data=json.dumps(payload.dict()),
                 # Pass the path so pywebpush reads the PEM from disk
                 vapid_private_key=VAPID_PRIVATE_KEY_FILE,
-                vapid_claims=VAPID_CLAIMS
+                # Audience must match the push service origin (e.g. https://fcm.googleapis.com)
+                vapid_claims={"sub": VAPID_CLAIMS["sub"], "aud": audience}
             )
             results["success"] += 1
         except WebPushException as ex:

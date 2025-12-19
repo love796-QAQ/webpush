@@ -109,14 +109,37 @@
         const reg = await navigator.serviceWorker.ready;
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
-          // 每次打开页面都重新上报一次，确保后端有数据（防止后端重启数据丢失）
-          reportSubscription(sub);
-          updateUI(true);
+          const exists = await backendHasSubscription(sub);
+          if (exists) {
+            // 每次打开页面都重新上报一次，确保后端有数据（防止后端重启数据丢失）
+            reportSubscription(sub);
+            updateUI(true);
+          } else {
+            // 后端已删除：同步取消本地订阅，提示重新订阅
+            await sub.unsubscribe();
+            updateUI(false);
+          }
         } else {
           updateUI(false);
         }
       } catch (e) {
         console.error(e);
+      }
+    }
+
+    async function backendHasSubscription(sub) {
+      try {
+        const res = await fetch('/api/subscriptions/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint })
+        });
+        const data = await res.json();
+        return !!data.exists;
+      } catch (e) {
+        console.error("检查订阅状态失败", e);
+        // 如果无法校验，默认认为存在，避免误删
+        return true;
       }
     }
 

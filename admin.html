@@ -16,6 +16,11 @@
         #status { margin-top: 20px; padding: 15px; border-radius: 4px; display: none; }
         .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #eee; padding: 8px; text-align: left; }
+        th { background: #fafafa; }
+        .endpoint { word-break: break-all; font-family: monospace; font-size: 14px; }
+        .muted { color: #666; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -34,6 +39,11 @@
     <button onclick="sendBroadcast()" id="sendBtn">📢 发送全员广播</button>
 
     <div id="status"></div>
+
+    <h2>📋 订阅管理</h2>
+    <div class="muted">列出当前已保存的订阅，可手动删除失效或测试订阅。</div>
+    <div id="subsStatus" class="muted" style="margin-top: 10px;">加载中...</div>
+    <div id="subsContainer"></div>
 
     <script>
         async function sendBroadcast() {
@@ -78,6 +88,67 @@
                 btn.innerText = "📢 发送全员广播";
             }
         }
+
+        async function loadSubscriptions() {
+            const statusDiv = document.getElementById('subsStatus');
+            const container = document.getElementById('subsContainer');
+            statusDiv.innerText = "加载中...";
+            container.innerHTML = "";
+
+            try {
+                const res = await fetch('/api/subscriptions');
+                const data = await res.json();
+                const subs = data.subscriptions || [];
+                statusDiv.innerText = `当前订阅数：${subs.length}`;
+
+                if (!subs.length) {
+                    container.innerHTML = '<div class="muted">暂无订阅。</div>';
+                    return;
+                }
+
+                const rows = subs.map((sub, idx) => {
+                    const endpoint = sub.endpoint || "";
+                    const host = endpoint.split('/')[2] || "";
+                    return `
+                        <tr>
+                            <td style="width:40px;">${idx + 1}</td>
+                            <td class="endpoint">${endpoint}</td>
+                            <td>${host}</td>
+                            <td style="width:120px;"><button onclick="deleteSubscription('${encodeURIComponent(endpoint)}')">删除</button></td>
+                        </tr>
+                    `;
+                }).join('');
+
+                container.innerHTML = `
+                    <table>
+                        <thead>
+                            <tr><th>#</th><th>Endpoint</th><th>Host</th><th>操作</th></tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                `;
+            } catch (e) {
+                statusDiv.innerText = "加载订阅失败：" + e;
+            }
+        }
+
+        async function deleteSubscription(encodedEndpoint) {
+            const endpoint = decodeURIComponent(encodedEndpoint);
+            if (!confirm("确定删除该订阅？\n" + endpoint)) return;
+
+            try {
+                await fetch('/api/subscriptions', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ endpoint })
+                });
+                loadSubscriptions();
+            } catch (e) {
+                alert("删除失败：" + e);
+            }
+        }
+
+        loadSubscriptions();
     </script>
 </body>
 </html>
